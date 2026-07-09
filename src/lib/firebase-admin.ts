@@ -2,12 +2,12 @@
  * Firebase Admin SDK - used server-side only (API routes)
  * Provides privileged access to Realtime Database, Storage, and Auth verification.
  *
- * Uses firebase-admin v14 modular API for proper CJS/ESM interop with Next.js 16 + Turbopack.
+ * NOTE: firebase-admin/auth → jwks-rsa → jose (ESM-only) crashes under Turbopack's
+ * CJS interop on Vercel. We therefore lazy-load auth/storage ONLY when actually
+ * called. Database (the main use case) loads eagerly and works fine.
  */
 import { initializeApp, getApps, cert, applicationDefault, type App } from "firebase-admin/app";
 import { getDatabase, type Database } from "firebase-admin/database";
-import { getAuth, type Auth } from "firebase-admin/auth";
-import { getStorage, type Storage } from "firebase-admin/storage";
 
 let adminApp: App | null = null;
 
@@ -59,15 +59,22 @@ function getAdminApp(): App {
   return adminApp;
 }
 
-// Lazy accessors using modular API (v14+)
+// Eager database accessor (safe — firebase-admin/database has no ESM-only deps)
 export function adminDb(): Database {
   return getDatabase(getAdminApp());
 }
-export function adminAuth(): Auth {
+
+// Lazy auth accessor (jwks-rsa/jose only loaded if/when called)
+export async function adminAuth(): Promise<import("firebase-admin/auth").Auth> {
+  const { getAuth } = await import("firebase-admin/auth");
   return getAuth(getAdminApp());
 }
-export function adminStorage(): Storage {
+
+// Lazy storage accessor
+export async function adminStorage(): Promise<import("firebase-admin/storage").Storage> {
+  const { getStorage } = await import("firebase-admin/storage");
   return getStorage(getAdminApp());
 }
+
 export { getAdminApp };
 export default getAdminApp;
