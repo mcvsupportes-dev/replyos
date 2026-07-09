@@ -16,7 +16,8 @@ export async function GET(req: NextRequest) {
 
   try {
     const db = adminDb();
-    const snap = await db.ref("notifications").orderByChild("createdAt").limitToLast(100).get();
+    // Read without orderByChild to avoid requiring Firebase index rules
+    const snap = await db.ref("notifications").limitToLast(200).get();
     const raw = snap.val() || {};
     const list = Object.entries(raw).map(([id, n]) => {
       const notif = n as Record<string, unknown>;

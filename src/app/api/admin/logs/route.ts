@@ -19,7 +19,8 @@ export async function GET(req: NextRequest) {
     const levelFilter = searchParams.get("level");
 
     const db = adminDb();
-    const snap = await db.ref("logs").orderByChild("timestamp").limitToLast(limit).get();
+    // Read without orderByChild to avoid requiring Firebase index rules
+    const snap = await db.ref("logs").limitToLast(limit * 2).get();
     const raw = snap.val() || {};
     let list = Object.entries(raw).map(([id, l]) => {
       const log = l as Record<string, unknown>;
