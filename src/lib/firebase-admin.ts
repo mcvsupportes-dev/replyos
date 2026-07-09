@@ -2,13 +2,16 @@
  * Firebase Admin SDK - used server-side only (API routes)
  * Provides privileged access to Realtime Database, Storage, and Auth verification.
  *
- * Uses namespace import (* as admin) for maximum CJS/ESM compatibility with Next.js 16 + Turbopack.
+ * Uses firebase-admin v14 modular API for proper CJS/ESM interop with Next.js 16 + Turbopack.
  */
-import * as admin from "firebase-admin";
+import { initializeApp, getApps, cert, applicationDefault, type App } from "firebase-admin/app";
+import { getDatabase, type Database } from "firebase-admin/database";
+import { getAuth, type Auth } from "firebase-admin/auth";
+import { getStorage, type Storage } from "firebase-admin/storage";
 
-let adminApp: admin.app.App | null = null;
+let adminApp: App | null = null;
 
-function parseServiceAccount(): admin.ServiceAccount | undefined {
+function parseServiceAccount(): Record<string, unknown> | undefined {
   const raw = process.env.FIREBASE_SERVICE_ACCOUNT;
   if (!raw || raw.trim() === "") return undefined;
   try {
@@ -18,7 +21,7 @@ function parseServiceAccount(): admin.ServiceAccount | undefined {
         // Restore real newlines (env vars often escape them)
         parsed.private_key = parsed.private_key.replace(/\\n/g, "\n");
       }
-      return parsed as admin.ServiceAccount;
+      return parsed as Record<string, unknown>;
     }
     console.error("[Firebase Admin] Service account JSON missing private_key");
     return undefined;
@@ -28,13 +31,13 @@ function parseServiceAccount(): admin.ServiceAccount | undefined {
   }
 }
 
-function getAdminApp(): admin.app.App {
+function getAdminApp(): App {
   if (adminApp) return adminApp;
 
   // Defensive: getApps() should always return an array, but guard anyway
-  let apps: admin.app.App[] = [];
+  let apps: App[] = [];
   try {
-    const maybeApps = (admin as any).getApps ? (admin as any).getApps() : undefined;
+    const maybeApps = typeof getApps === "function" ? getApps() : [];
     if (Array.isArray(maybeApps)) apps = maybeApps;
   } catch {
     apps = [];
@@ -45,11 +48,9 @@ function getAdminApp(): admin.app.App {
   }
 
   const serviceAccount = parseServiceAccount();
-  const credential = serviceAccount
-    ? (admin as any).cert(serviceAccount)
-    : (admin as any).applicationDefault();
+  const credential = serviceAccount ? cert(serviceAccount as any) : applicationDefault();
 
-  adminApp = (admin as any).initializeApp({
+  adminApp = initializeApp({
     credential,
     databaseURL: process.env.NEXT_PUBLIC_FIREBASE_DATABASE_URL,
     storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
@@ -58,15 +59,15 @@ function getAdminApp(): admin.app.App {
   return adminApp;
 }
 
-// Lazy accessors — only call database()/auth()/storage() when actually needed
-export function adminDb(): admin.database.Database {
-  return (getAdminApp() as any).database();
+// Lazy accessors using modular API (v14+)
+export function adminDb(): Database {
+  return getDatabase(getAdminApp());
 }
-export function adminAuth(): admin.auth.Auth {
-  return (getAdminApp() as any).auth();
+export function adminAuth(): Auth {
+  return getAuth(getAdminApp());
 }
-export function adminStorage(): admin.storage.Storage {
-  return (getAdminApp() as any).storage();
+export function adminStorage(): Storage {
+  return getStorage(getAdminApp());
 }
 export { getAdminApp };
 export default getAdminApp;
