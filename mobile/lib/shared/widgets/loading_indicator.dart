@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../core/theme/app_colors.dart';
+import '../../core/theme/app_colors.dart';
 
 /// Centered circular loading indicator with optional label.
 class LoadingIndicator extends StatelessWidget {

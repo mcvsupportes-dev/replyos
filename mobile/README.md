@@ -1,6 +1,6 @@
 # ReplyOS — Mobile App (Flutter)
 
-ReplyOS is an AI assistant app for WhatsApp business users. This Flutter app is **Arabic-first** with full **RTL** support, powered by **Firebase** (Auth, Realtime Database, Storage) and connects to the ReplyOS Next.js backend (`https://replyos-1.vercel.app`).
+ReplyOS is an AI assistant app for WhatsApp business users. This Flutter app is **Arabic-first** with full **RTL** support, powered by **Firebase** (Auth, Realtime Database, Storage) and connects to the ReplyOS Next.js backend (`https://replyos-bbbmu.vercel.app`).
 
 ## Features
 
@@ -29,7 +29,7 @@ ReplyOS is an AI assistant app for WhatsApp business users. This Flutter app is 
 | Language         | Dart 3                                            |
 | State Management | `provider`                                         |
 | Backend          | Firebase Auth + Realtime Database + Storage       |
-| AI / WhatsApp    | Next.js backend API (`https://replyos-1.vercel.app`) |
+| AI / WhatsApp    | Next.js backend API (`https://replyos-bbbmu.vercel.app`) |
 | Notifications    | `flutter_local_notifications`                     |
 | Fonts            | Cairo (via `google_fonts`)                         |
 | Icons            | `lucide_icons`                                    |
@@ -68,7 +68,7 @@ flutter run
 - `POST /api/ai/chat` — AI chat completion (body: `{ messages, tone, length, providerId }`)
 - `POST /api/whatsapp/send-message` — Send a WhatsApp message
 
-Both endpoints are called via relative paths through the app's configured base URL (`https://replyos-1.vercel.app`).
+Both endpoints are called via relative paths through the app's configured base URL (`https://replyos-bbbmu.vercel.app`).
 
 ## Notes
 

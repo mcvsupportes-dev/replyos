@@ -6,6 +6,7 @@ import '../../core/models/message_model.dart';
 import '../../core/services/ai_service.dart';
 import '../../core/services/database_service.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/utils/extensions.dart';
 import '../../shared/layouts/main_layout.dart';
 
 /// ChatGPT-style chat with the AI assistant.

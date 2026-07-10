@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:lucide_icons/lucide_icons.dart';
-import '../../core/services/database_service.dart';
+import '../../core/config/app_config.dart';
+import '../../core/services/auth_service.dart';
+import '../../core/services/plans_service.dart';
 import '../../core/theme/app_colors.dart';
 import '../../shared/layouts/main_layout.dart';
 import '../../shared/widgets/app_button.dart';
@@ -9,7 +11,9 @@ import '../../shared/widgets/app_card.dart';
 import '../../shared/widgets/loading_indicator.dart';
 import '../../shared/widgets/status_badge.dart';
 
-/// Subscription: current plan, usage, upgrade options (Free / Pro / Business).
+/// Subscription screen — pulls plans live from the admin dashboard
+/// (which the admin can edit at /dashboard/plans). Users can subscribe
+/// to any plan, and the change is persisted to Firebase.
 class SubscriptionScreen extends StatefulWidget {
   final String uid;
 
@@ -21,8 +25,10 @@ class SubscriptionScreen extends StatefulWidget {
 
 class _SubscriptionScreenState extends State<SubscriptionScreen> {
   bool _loading = true;
+  bool _subscribing = false;
   String _currentPlan = 'free';
-  Map<String, int> _usage = {'replies': 0, 'limit': 100};
+  int _repliesThisMonth = 0;
+  List<PlanModel> _plans = [];
 
   @override
   void initState() {
@@ -33,24 +39,29 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
   Future<void> _load() async {
     setState(() => _loading = true);
     try {
-      final sub = await DatabaseService.instance.getSubscription(widget.uid);
-      if (sub != null) {
-        _currentPlan = (sub['plan'] as String?) ?? 'free';
-        _usage = {
-          'replies': (sub['usage']?['replies'] as num?)?.toInt() ?? 0,
-          'limit': (sub['limit'] as num?)?.toInt() ?? 100,
-        };
-      }
+      // Load current user plan + plans list in parallel
+      final results = await Future.wait([
+        AuthService.instance.getCachedUserPlan(),
+        PlansService.instance.fetchPlans(),
+      ]);
+      _currentPlan = results[0] as String;
+      _plans = results[1] as List<PlanModel>;
     } catch (_) {}
     if (mounted) setState(() => _loading = false);
   }
 
-  Future<void> _upgrade(String plan) async {
-    final ok = await showDialog<bool>(
+  Future<void> _subscribe(PlanModel plan) async {
+    if (plan.id == _currentPlan) return;
+
+    final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text('ترقية إلى $plan'),
-        content: Text('سيتم تحويلك إلى صفحة الدفع لإتمام الترقية.'),
+        title: Text('اشترك في ${plan.nameAr}'),
+        content: Text(
+          plan.price == 0
+              ? 'سيتم تفعيل الباقة المجانية فوراً.'
+              : 'سيتم تحويلك إلى صفحة الدفع لإتمام الاشتراك في ${plan.nameAr} (${plan.formattedPrice('ar')}).',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -63,19 +74,42 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
         ],
       ),
     );
-    if (ok != true) return;
-    setState(() => _currentPlan = plan);
-    await DatabaseService.instance.saveSubscription(widget.uid, {
-      'uid': widget.uid,
-      'plan': plan,
-      'usage': _usage,
-      'limit': plan == 'free' ? 100 : plan == 'pro' ? 1000 : 100000,
-      'updatedAt': DateTime.now().toIso8601String(),
-    });
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('تمت الترقية إلى $plan (تجريبي)')),
-      );
+    if (confirmed != true) return;
+
+    setState(() => _subscribing = true);
+    try {
+      await PlansService.instance.subscribe(planId: plan.id);
+      setState(() {
+        _currentPlan = plan.id;
+        _repliesThisMonth = 0;
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('تم الاشتراك في ${plan.nameAr} بنجاح! 🎉'),
+            backgroundColor: AppColors.success,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('فشل الاشتراك: $e'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _subscribing = false);
+    }
+  }
+
+  PlanModel? get _currentPlanObj {
+    try {
+      return _plans.firstWhere((p) => p.id == _currentPlan);
+    } catch (_) {
+      return null;
     }
   }
 
@@ -94,45 +128,71 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
         ),
       ),
       body: _loading
-          ? const LoadingIndicator(label: 'جارٍ التحميل...')
-          : SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  _currentCard(),
-                  const SizedBox(height: 20),
-                  _usageCard(),
-                  const SizedBox(height: 24),
-                  const Align(
-                    alignment: Alignment.centerRight,
-                    child: Text(
-                      'الخطط المتاحة',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w800,
-                        color: AppColors.textPrimaryLight,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  ..._plans().map((p) => Padding(
-                        padding: const EdgeInsets.only(bottom: 12),
-                        child: _PlanCard(
-                          plan: p,
-                          isCurrent: p.id == _currentPlan,
-                          onUpgrade: () => _upgrade(p.id),
+          ? const LoadingIndicator(label: 'جارٍ تحميل الخطط...')
+          : RefreshIndicator(
+              onRefresh: _load,
+              child: SingleChildScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _currentCard(),
+                    const SizedBox(height: 20),
+                    _usageCard(),
+                    const SizedBox(height: 24),
+                    Row(
+                      children: [
+                        const Text(
+                          'الخطط المتاحة',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.textPrimaryLight,
+                          ),
                         ),
-                      )),
-                  const SizedBox(height: 16),
-                  _faqCard(),
-                ],
+                        const Spacer(),
+                        if (_plans.isNotEmpty)
+                          Text(
+                            '${_plans.length} باقات',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: AppColors.textMutedLight,
+                            ),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    if (_plans.isEmpty)
+                      _emptyPlansCard()
+                    else
+                      ..._plans.map((p) => Padding(
+                            padding: const EdgeInsets.only(bottom: 12),
+                            child: _PlanCard(
+                              plan: p,
+                              isCurrent: p.id == _currentPlan,
+                              subscribing: _subscribing,
+                              onUpgrade: () => _subscribe(p),
+                            ),
+                          )),
+                    const SizedBox(height: 16),
+                    _faqCard(),
+                  ],
+                ),
               ),
             ),
     );
   }
 
   Widget _currentCard() {
+    final plan = _currentPlanObj;
+    final planName = plan?.nameAr ?? (_currentPlan == 'free' ? 'مجاني' : _currentPlan);
+    final planDesc = plan != null
+        ? (plan.repliesLimit == 0
+            ? 'ردود غير محدودة'
+            : 'حتى ${plan.repliesLimit} رد شهرياً')
+        : 'الباقة الحالية';
+
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -157,22 +217,14 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
               ),
               const Spacer(),
               StatusBadge(
-                label: _currentPlan == 'free'
-                    ? 'مجاني'
-                    : _currentPlan == 'pro'
-                        ? 'احترافي'
-                        : 'أعمال',
+                label: planName,
                 type: BadgeType.success,
               ),
             ],
           ),
           const SizedBox(height: 12),
           Text(
-            _currentPlan == 'free'
-                ? 'الباقة المجانية'
-                : _currentPlan == 'pro'
-                    ? 'الباقة الاحترافية'
-                    : 'باقة الأعمال',
+            planName,
             style: const TextStyle(
               fontSize: 24,
               fontWeight: FontWeight.w800,
@@ -181,11 +233,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
           ),
           const SizedBox(height: 4),
           Text(
-            _currentPlan == 'free'
-                ? 'حتى 100 رد شهرياً'
-                : _currentPlan == 'pro'
-                    ? 'حتى 1,000 رد شهرياً'
-                    : 'ردود غير محدودة',
+            planDesc,
             style: TextStyle(
               fontSize: 13,
               color: Colors.white.withOpacity(0.85),
@@ -197,9 +245,11 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
   }
 
   Widget _usageCard() {
-    final replies = _usage['replies'] ?? 0;
-    final limit = _usage['limit'] ?? 100;
-    final pct = (replies / limit).clamp(0.0, 1.0);
+    final plan = _currentPlanObj;
+    final replies = _repliesThisMonth;
+    final limit = plan?.repliesLimit ?? 100;
+    final pct = limit == 0 ? 0.0 : (replies / limit).clamp(0.0, 1.0);
+
     return AppCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -218,7 +268,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
               ),
               const Spacer(),
               Text(
-                '$replies / $limit',
+                limit == 0 ? '$replies / ∞' : '$replies / $limit',
                 style: const TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w700,
@@ -238,7 +288,9 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
           ),
           const SizedBox(height: 8),
           Text(
-            '${(pct * 100).round()}% من الحد الشهري',
+            limit == 0
+                ? 'استخدام غير محدود'
+                : '${(pct * 100).round()}% من الحد الشهري',
             style: const TextStyle(
               fontSize: 11,
               color: AppColors.textMutedLight,
@@ -249,51 +301,35 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
     ).animate().fadeIn(delay: 100.ms).slideY(begin: 0.1, end: 0);
   }
 
-  List<_Plan> _plans() {
-    return [
-      _Plan(
-        id: 'free',
-        name: 'مجاني',
-        price: '0',
-        period: 'للأبد',
-        color: AppColors.textSecondaryLight,
-        features: [
-          'حتى 100 رد شهرياً',
-          'مساعد ذكي أساسي',
-          'قاعدة واحدة',
-          'دعم عبر البريد',
+  Widget _emptyPlansCard() {
+    return AppCard(
+      child: Column(
+        children: [
+          const Icon(LucideIcons.cloudOff, size: 32, color: AppColors.textMutedLight),
+          const SizedBox(height: 12),
+          const Text(
+            'تعذر تحميل الخطط',
+            style: TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w700,
+              color: AppColors.textPrimaryLight,
+            ),
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'تأكد من اتصالك بالإنترنت واسحب للأسفل للتحديث.',
+            style: TextStyle(fontSize: 12, color: AppColors.textMutedLight),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 12),
+          AppButton(
+            label: 'إعادة المحاولة',
+            icon: LucideIcons.refreshCw,
+            onPressed: _load,
+          ),
         ],
       ),
-      _Plan(
-        id: 'pro',
-        name: 'احترافي',
-        price: '99',
-        period: 'شهرياً',
-        color: AppColors.primary,
-        features: [
-          'حتى 1,000 رد شهرياً',
-          'مساعد ذكي متقدم',
-          'قواعد غير محدودة',
-          'إحصائيات كاملة',
-          'دعم ذو أولوية',
-        ],
-        popular: true,
-      ),
-      _Plan(
-        id: 'business',
-        name: 'أعمال',
-        price: '299',
-        period: 'شهرياً',
-        color: AppColors.accent,
-        features: [
-          'ردود غير محدودة',
-          'مستخدمون متعددون',
-          'تكامل API متقدم',
-          'تقارير مخصصة',
-          'مدير حساب مخصص',
-        ],
-      ),
-    ];
+    );
   }
 
   Widget _faqCard() {
@@ -319,6 +355,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
           _faq('هل يمكنني الترقية أو التخفيض في أي وقت؟', 'نعم، يمكنك ذلك فوراً من هذه الشاشة.'),
           _faq('هل توجد فترة تجربة مجانية؟', 'الباقة المجانية متاحة دائماً دون بطاقة ائتمان.'),
           _faq('كيف يتم الدفع؟', 'عبر بطاقة ائتمان أو محفظة إلكترونية بعد الترقية.'),
+          _faq('هل الأسعار شاملة الضريبة؟', 'نعم، جميع الأسعار شاملة الضريبة.'),
         ],
       ),
     );
@@ -355,43 +392,29 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
   }
 }
 
-class _Plan {
-  final String id;
-  final String name;
-  final String price;
-  final String period;
-  final Color color;
-  final List<String> features;
-  final bool popular;
-
-  const _Plan({
-    required this.id,
-    required this.name,
-    required this.price,
-    required this.period,
-    required this.color,
-    required this.features,
-    this.popular = false,
-  });
-}
-
 class _PlanCard extends StatelessWidget {
-  final _Plan plan;
+  final PlanModel plan;
   final bool isCurrent;
+  final bool subscribing;
   final VoidCallback onUpgrade;
 
   const _PlanCard({
     required this.plan,
     required this.isCurrent,
+    required this.subscribing,
     required this.onUpgrade,
   });
 
   @override
   Widget build(BuildContext context) {
+    final accent = plan.popular
+        ? AppColors.primary
+        : plan.id == 'business'
+            ? AppColors.accent
+            : AppColors.textSecondaryLight;
+
     return AppCard(
-      border: plan.popular
-          ? Border.all(color: AppColors.primary, width: 1.5)
-          : null,
+      border: plan.popular ? Border.all(color: AppColors.primary, width: 1.5) : null,
       child: Stack(
         children: [
           if (plan.popular)
@@ -399,8 +422,7 @@ class _PlanCard extends StatelessWidget {
               top: 0,
               left: 0,
               child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: const BoxDecoration(
                   color: AppColors.primary,
                   borderRadius: BorderRadius.only(
@@ -425,16 +447,26 @@ class _PlanCard extends StatelessWidget {
               children: [
                 Row(
                   children: [
-                    Icon(LucideIcons.crown, color: plan.color, size: 22),
+                    Icon(LucideIcons.crown, color: accent, size: 22),
                     const SizedBox(width: 8),
-                    Text(
-                      plan.name,
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w800,
-                        color: AppColors.textPrimaryLight,
+                    Expanded(
+                      child: Text(
+                        plan.nameAr,
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.textPrimaryLight,
+                        ),
                       ),
                     ),
+                    if (plan.subscriberCount > 0)
+                      Text(
+                        '${plan.subscriberCount} مشترك',
+                        style: const TextStyle(
+                          fontSize: 11,
+                          color: AppColors.textMutedLight,
+                        ),
+                      ),
                   ],
                 ),
                 const SizedBox(height: 8),
@@ -442,33 +474,34 @@ class _PlanCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
                     Text(
-                      plan.price,
+                      plan.price == 0 ? 'مجاناً' : plan.formattedPrice('ar'),
                       style: TextStyle(
-                        fontSize: 32,
+                        fontSize: 28,
                         fontWeight: FontWeight.w900,
-                        color: plan.color,
+                        color: accent,
                       ),
                     ),
-                    const SizedBox(width: 4),
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 6),
-                      child: Text(
-                        'ر.س / ${plan.period}',
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: AppColors.textSecondaryLight,
+                    if (plan.price > 0) ...[
+                      const SizedBox(width: 4),
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 4),
+                        child: Text(
+                          plan.interval == 'month' ? '/شهر' : '/سنة',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: AppColors.textSecondaryLight,
+                          ),
                         ),
                       ),
-                    ),
+                    ],
                   ],
                 ),
                 const SizedBox(height: 14),
-                ...plan.features.map((f) => Padding(
+                ...plan.featuresAr.map((f) => Padding(
                       padding: const EdgeInsets.symmetric(vertical: 4),
                       child: Row(
                         children: [
-                          const Icon(LucideIcons.check,
-                              size: 14, color: AppColors.success),
+                          const Icon(LucideIcons.check, size: 14, color: AppColors.success),
                           const SizedBox(width: 8),
                           Expanded(
                             child: Text(
@@ -484,12 +517,17 @@ class _PlanCard extends StatelessWidget {
                     )),
                 const SizedBox(height: 14),
                 AppButton(
-                  label: isCurrent ? 'الباقة الحالية' : 'ترقية',
+                  label: isCurrent
+                      ? 'الباقة الحالية'
+                      : subscribing
+                          ? 'جارٍ الاشتراك...'
+                          : 'اشترك الآن',
                   variant: isCurrent
                       ? AppButtonVariant.secondary
                       : AppButtonVariant.gradient,
                   fullWidth: true,
-                  onPressed: isCurrent ? null : onUpgrade,
+                  icon: subscribing ? LucideIcons.loader : (isCurrent ? LucideIcons.check : null),
+                  onPressed: isCurrent || subscribing ? null : onUpgrade,
                 ),
               ],
             ),

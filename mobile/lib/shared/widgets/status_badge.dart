@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../core/theme/app_colors.dart';
+import '../../core/theme/app_colors.dart';
 
 enum BadgeType { success, warning, danger, info, neutral, primary }
 

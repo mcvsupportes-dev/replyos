@@ -43,6 +43,44 @@ export function WhatsAppClient() {
   const [testMsg, setTestMsg] = React.useState("");
   const [sending, setSending] = React.useState(false);
 
+  // Remote bridge status
+  const [bridgeHealth, setBridgeHealth] = React.useState<{
+    ok: boolean;
+    uptime?: number;
+    sessions?: number;
+    url: string;
+  } | null>(null);
+  const [bridgeSessions, setBridgeSessions] = React.useState<
+    Array<{ phone: string; status: string; pairingCode?: string; user?: { id: string; name?: string } }>
+  >([]);
+  const [bridgeLoading, setBridgeLoading] = React.useState(false);
+
+  const refreshBridge = async () => {
+    setBridgeLoading(true);
+    try {
+      const [healthRes, sessionsRes] = await Promise.all([
+        fetch("/api/admin/whatsapp?action=health", { cache: "no-store" }),
+        fetch("/api/admin/whatsapp?action=sessions", { cache: "no-store" }),
+      ]);
+      if (healthRes.ok) {
+        const data = await healthRes.json();
+        setBridgeHealth(data);
+      }
+      if (sessionsRes.ok) {
+        const data = await sessionsRes.json();
+        setBridgeSessions(data.sessions || []);
+      }
+    } catch {
+      // ignore
+    } finally {
+      setBridgeLoading(false);
+    }
+  };
+
+  React.useEffect(() => {
+    refreshBridge();
+  }, []);
+
   const startPairing = async () => {
     if (!phoneNumber.trim()) {
       toast.error(lang === "ar" ? "أدخل رقم الهاتف" : "Enter phone number");
@@ -161,8 +199,7 @@ export function WhatsAppClient() {
         body: JSON.stringify({
           to: testTo,
           message: testMsg,
-          phoneNumberId: state.phoneNumber,
-          accessToken: "baileys", // marker — server routes Baileys path
+          phoneNumber: state.phoneNumber, // connected WhatsApp number — routes to bridge
         }),
       });
       const data = await res.json();
@@ -403,6 +440,114 @@ export function WhatsAppClient() {
           )}
         </Card>
       </div>
+
+      {/* Remote Bridge Status Panel */}
+      <Card className="mt-4 p-6 premium-shadow">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-3">
+            <div className="w-11 h-11 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
+              <RefreshCw className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="font-semibold text-foreground">
+                {lang === "ar" ? "حالة خادم الربط (Bridge)" : "Bridge Server Status"}
+              </h3>
+              <p className="text-xs text-muted-foreground">
+                {lang === "ar"
+                  ? "الخادم البعيد الذي يدير اتصالات واتساب"
+                  : "Remote server managing WhatsApp connections"}
+              </p>
+            </div>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={refreshBridge}
+            disabled={bridgeLoading}
+          >
+            {bridgeLoading ? (
+              <Loader2 className="w-3.5 h-3.5 me-1.5 animate-spin" />
+            ) : (
+              <RefreshCw className="w-3.5 h-3.5 me-1.5" />
+            )}
+            {lang === "ar" ? "تحديث" : "Refresh"}
+          </Button>
+        </div>
+
+        {bridgeHealth ? (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="bg-muted/40 rounded-xl p-3">
+              <p className="text-xs text-muted-foreground mb-1">
+                {lang === "ar" ? "الحالة" : "Status"}
+              </p>
+              <Badge variant={bridgeHealth.ok ? "default" : "destructive"}>
+                {bridgeHealth.ok
+                  ? lang === "ar" ? "يعمل" : "Online"
+                  : lang === "ar" ? "لا يعمل" : "Offline"}
+              </Badge>
+            </div>
+            <div className="bg-muted/40 rounded-xl p-3">
+              <p className="text-xs text-muted-foreground mb-1">
+                {lang === "ar" ? "الجلسات النشطة" : "Active Sessions"}
+              </p>
+              <p className="text-lg font-semibold text-foreground">
+                {bridgeHealth.sessions ?? "—"}
+              </p>
+            </div>
+            <div className="bg-muted/40 rounded-xl p-3">
+              <p className="text-xs text-muted-foreground mb-1">
+                {lang === "ar" ? "مدة التشغيل" : "Uptime"}
+              </p>
+              <p className="text-lg font-semibold text-foreground">
+                {bridgeHealth.uptime
+                  ? `${Math.floor(bridgeHealth.uptime / 60)}m`
+                  : "—"}
+              </p>
+            </div>
+            <div className="bg-muted/40 rounded-xl p-3">
+              <p className="text-xs text-muted-foreground mb-1">
+                {lang === "ar" ? "الرابط" : "URL"}
+              </p>
+              <p className="text-xs font-mono text-foreground truncate" dir="ltr">
+                {bridgeHealth.url || "—"}
+              </p>
+            </div>
+          </div>
+        ) : (
+          <div className="text-center py-4 text-sm text-muted-foreground">
+            {lang === "ar"
+              ? "اضغط تحديث لفحص حالة الخادم"
+              : "Click refresh to check server status"}
+          </div>
+        )}
+
+        {bridgeSessions.length > 0 && (
+          <div className="mt-4 pt-4 border-t border-border">
+            <p className="text-sm font-medium text-foreground mb-2">
+              {lang === "ar" ? "الجلسات الحالية" : "Current Sessions"}
+            </p>
+            <div className="space-y-2 max-h-48 overflow-y-auto">
+              {bridgeSessions.map((s) => (
+                <div
+                  key={s.phone}
+                  className="flex items-center justify-between p-2 bg-muted/30 rounded-lg text-sm"
+                >
+                  <span className="font-mono" dir="ltr">{s.phone}</span>
+                  <Badge
+                    variant={
+                      s.status === "open" ? "default"
+                        : s.status === "connecting" ? "secondary"
+                        : "outline"
+                    }
+                  >
+                    {s.status}
+                  </Badge>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </Card>
 
       {/* Info banner */}
       <Card className="mt-4 p-4 bg-primary/5 border-primary/20">

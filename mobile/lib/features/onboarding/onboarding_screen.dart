@@ -139,7 +139,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                             height: 1.25,
                           ),
                         )
-                            .animate(key: ValueKey('t$i))
+                            .animate(key: ValueKey('t$i'))
                             .fadeIn(delay: 200.ms, duration: 400.ms)
                             .slideY(begin: 0.2, end: 0),
                         const SizedBox(height: 14),
@@ -152,7 +152,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                             height: 1.6,
                           ),
                         )
-                            .animate(key: ValueKey('d$i))
+                            .animate(key: ValueKey('d$i'))
                             .fadeIn(delay: 350.ms, duration: 400.ms)
                             .slideY(begin: 0.2, end: 0),
                       ],

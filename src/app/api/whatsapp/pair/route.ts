@@ -1,16 +1,18 @@
 /**
- * WhatsApp Pairing Code API
- * POST /api/whatsapp/pair   body: { phoneNumber }   → returns { pairingCode }
- * GET  /api/whatsapp/pair?phoneNumber=...   → returns connection status
- * DELETE /api/whatsapp/pair?phoneNumber=... → disconnect
+ * WhatsApp Pairing API — proxies to the remote WhatsApp Bridge.
+ * POST   /api/whatsapp/pair   body: { phoneNumber }   → { pairingCode, status }
+ * GET    /api/whatsapp/pair?phoneNumber=...           → connection status
+ * DELETE /api/whatsapp/pair?phoneNumber=...           → disconnect
+ *
+ * The bridge runs on the VPS at WHATSAPP_BRIDGE_URL.
  */
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/api-guard";
 import {
-  requestPairingCode,
-  getConnection,
-  disconnect,
-} from "@/lib/whatsapp-baileys";
+  bridgeRequestPairing,
+  bridgeGetStatus,
+  bridgeDisconnect,
+} from "@/lib/whatsapp-bridge-client";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -37,36 +39,42 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Already connected?
-    const existing = getConnection(phone);
-    if (existing && existing.status === "open") {
+    // Try the remote bridge first
+    try {
+      const bridgeResult = await bridgeRequestPairing(phone);
+
+      // Persist the pairing attempt to Firebase for history
+      try {
+        const { adminDb } = await import("@/lib/firebase-admin");
+        const db = adminDb();
+        await db.ref(`whatsappConnections/${phone}`).update({
+          status: "pairing",
+          pairingCode: bridgeResult.pairingCode || null,
+          requestedAt: Date.now(),
+          bridge: "remote",
+        });
+      } catch {
+        // best-effort
+      }
+
       return NextResponse.json({
         success: true,
-        status: "connected",
-        user: existing.user,
-        message: "Already connected",
+        pairingCode: bridgeResult.pairingCode,
+        status: bridgeResult.status,
+        phoneNumber: phone,
+        instructions:
+          "افتح واتساب على هاتفك ← الإعدادات ← الأجهزة المرتبطة ← ربط جهاiz ← ربط برقم الهاتف ← أدخل هذا الكود المكوّن من 8 أحرف/أرقام",
+        bridge: "remote",
       });
+    } catch (bridgeErr) {
+      const msg = bridgeErr instanceof Error ? bridgeErr.message : "Bridge error";
+      return NextResponse.json(
+        { error: msg, bridge: "remote" },
+        { status: 500 }
+      );
     }
-
-    const pairingCode = await requestPairingCode(phone);
-
-    return NextResponse.json({
-      success: true,
-      pairingCode,
-      status: "pairing",
-      phoneNumber: phone,
-      instructions:
-        "Open WhatsApp on your phone → Settings → Linked Devices → Link a Device → enter this 8-digit code",
-    });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
-    if (message === "ALREADY_CONNECTED") {
-      return NextResponse.json({
-        success: true,
-        status: "connected",
-        message: "Already connected",
-      });
-    }
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
@@ -86,22 +94,32 @@ export async function GET(req: NextRequest) {
     }
 
     const phone = phoneNumber.replace(/[^\d]/g, "");
-    const session = getConnection(phone);
-    if (!session) {
-      return NextResponse.json({
-        status: "disconnected",
-        phoneNumber: phone,
-      });
-    }
 
-    return NextResponse.json({
-      status: session.status,
-      phoneNumber: phone,
-      pairingCode: session.pairingCode,
-      user: session.user,
-      connectionAt: session.connectionAt,
-      lastError: session.lastError,
-    });
+    // Try the remote bridge
+    try {
+      const status = await bridgeGetStatus(phone);
+      return NextResponse.json({
+        status: status.state,
+        state: status.state,
+        phoneNumber: phone,
+        pairingCode: status.pairingCode,
+        user: status.user,
+        connectionAt: status.connectionAt,
+        lastError: status.lastError,
+        bridge: "remote",
+      });
+    } catch (bridgeErr) {
+      const msg = bridgeErr instanceof Error ? bridgeErr.message : "Bridge error";
+      return NextResponse.json(
+        {
+          status: "disconnected",
+          phoneNumber: phone,
+          lastError: msg,
+          bridge: "remote",
+        },
+        { status: 200 }
+      );
+    }
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
     return NextResponse.json({ error: message }, { status: 500 });
@@ -121,8 +139,29 @@ export async function DELETE(req: NextRequest) {
         { status: 400 }
       );
     }
-    await disconnect(phoneNumber);
-    return NextResponse.json({ success: true });
+
+    const phone = phoneNumber.replace(/[^\d]/g, "");
+
+    // Try the remote bridge
+    try {
+      await bridgeDisconnect(phone);
+
+      try {
+        const { adminDb } = await import("@/lib/firebase-admin");
+        const db = adminDb();
+        await db.ref(`whatsappConnections/${phone}`).update({
+          status: "disconnected",
+          disconnectedAt: Date.now(),
+        });
+      } catch {
+        // best-effort
+      }
+
+      return NextResponse.json({ success: true, bridge: "remote" });
+    } catch (bridgeErr) {
+      const msg = bridgeErr instanceof Error ? bridgeErr.message : "Bridge error";
+      return NextResponse.json({ error: msg }, { status: 500 });
+    }
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
     return NextResponse.json({ error: message }, { status: 500 });

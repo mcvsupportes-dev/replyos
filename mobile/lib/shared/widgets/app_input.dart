@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
-import '../core/theme/app_colors.dart';
-import '../core/utils/constants.dart';
+import '../../core/theme/app_colors.dart';
+import '../../core/utils/constants.dart';
 
 /// Reusable text input with label, validation, optional icon and helper text.
 class AppInput extends StatefulWidget {
