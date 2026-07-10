@@ -97,3 +97,30 @@ Stage Summary:
 - الـ WhatsApp pairing code flow شغّال: phone → pairingCode → enter in WhatsApp → connected
 - الـ Flutter app بيخزن user token في SharedPreferences لكل الطلبات
 - فيه API routes عامة (no auth) للخطط، و routes خاصة (مع user token) للمستخدم والواتساب
+
+---
+Task ID: release-2026-07-10
+Agent: main
+Task: Push all project code to GitHub, build new APK, upload APK as release asset, retrieve admin password.
+
+Work Log:
+- Checked git status — repo at /home/z/my-project on main branch
+- Verified existing APK at mobile/build/app/outputs/flutter-apk/app-release.apk (3.3MB, dated 2026-07-10 23:07 — no Dart files modified after build, so APK is current)
+- Verified GitHub token validity via /user endpoint
+- Found admin credentials in src/lib/admin-auth.ts (defaults): admin@replyos.com / ReplyOS2025!
+- Created scripts/github-release.py — Python script using GitHub REST API
+- First run blocked by GitHub Push Protection (script had token hardcoded)
+- Refactored script to read token from $GH_TOKEN env var
+- Reset bad commit, re-committed sanitized version, pushed successfully
+- Created release v2026.07.10-2322 (ID 352371197)
+- Uploaded APK as release asset (3,342,540 bytes, asset ID 472998130)
+- Verified Vercel deployment: dashboard HTTP 307, /login HTTP 200, /api/public/plans returns valid JSON
+
+Stage Summary:
+- GitHub repo: https://github.com/mcvsupportes-dev/replyos (39MB, main branch)
+- Release page: https://github.com/mcvsupportes-dev/replyos/releases/tag/v2026.07.10-2322
+- APK download: https://github.com/mcvsupportes-dev/replyos/releases/download/v2026.07.10-2322/replyos-v2026.07.10-2322.apk
+- Admin login: admin@replyos.com / ReplyOS2025!
+- Dashboard: https://replyos-bbbmu.vercel.app (working)
+- Script: /home/z/my-project/scripts/github-release.py (token from env var, safe to keep in repo)
+- ACTION NEEDED: User must revoke GitHub token [REDACTED] and Vercel token [REDACTED:vercel_token] immediately
