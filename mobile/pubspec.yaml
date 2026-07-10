@@ -10,7 +10,7 @@ dependencies:
   flutter:
     sdk: flutter
 
-  # Firebase
+  # Firebase (compatible with Flutter 3.27 / Dart 3.6)
   firebase_core: ^2.27.0
   firebase_auth: ^4.17.8
   firebase_database: ^10.4.9
@@ -30,17 +30,17 @@ dependencies:
 
   # Media / Files
   image_picker: ^1.0.7
-  file_picker: ^6.2.0
+  file_picker: ^6.2.1
 
   # Storage / Localization
   shared_preferences: ^2.2.2
-  intl: ^0.19.0
+  intl: ^0.18.1
 
   # Networking
   http: ^1.2.0
 
   # Notifications & External
-  flutter_local_notifications: ^17.0.0
+  flutter_local_notifications: ^17.2.4
   url_launcher: ^6.2.5
 
   cupertino_icons: ^1.0.6

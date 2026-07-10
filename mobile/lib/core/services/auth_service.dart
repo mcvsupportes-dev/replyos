@@ -45,7 +45,7 @@ class AuthService {
     await _clearGuestLocal();
 
     // Cache the Firebase ID token for API calls
-    final idToken = await cred.user!.getIdToken();
+    final idToken = await cred.user!.getIdToken() ?? '';
     await _cacheUserToken(idToken, cred.user!.uid, cred.user!.email ?? '');
 
     return UserModel.fromFirebaseUser(cred.user!, provider: 'password');
@@ -67,7 +67,7 @@ class AuthService {
     await _clearGuestLocal();
 
     // Cache the Firebase ID token for API calls
-    final idToken = await cred.user!.getIdToken();
+    final idToken = await cred.user!.getIdToken() ?? '';
     await _cacheUserToken(idToken, cred.user!.uid, cred.user!.email ?? '');
 
     return UserModel.fromFirebaseUser(cred.user!, provider: 'password');
@@ -111,7 +111,6 @@ class AuthService {
       uid: user['id'] as String,
       email: user['email'] as String,
       displayName: user['name'] as String?,
-      isEmailVerified: true,
       provider: 'password',
     );
   }
@@ -156,7 +155,6 @@ class AuthService {
       uid: user['id'] as String,
       email: user['email'] as String,
       displayName: user['name'] as String?,
-      isEmailVerified: true,
       provider: 'password',
     );
   }
@@ -204,7 +202,7 @@ class AuthService {
     await _clearGuestLocal();
 
     // Cache the Firebase ID token for API calls
-    final idToken = await cred.user!.getIdToken();
+    final idToken = await cred.user!.getIdToken() ?? '';
     await _cacheUserToken(idToken, cred.user!.uid, cred.user!.email ?? '');
 
     return UserModel.fromFirebaseUser(cred.user!, provider: 'google');

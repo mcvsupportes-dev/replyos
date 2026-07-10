@@ -96,7 +96,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('فشل الاشتراك: $e'),
-            backgroundColor: AppColors.error,
+            backgroundColor: AppColors.danger,
           ),
         );
       }

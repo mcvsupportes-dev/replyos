@@ -110,7 +110,7 @@ class _WhatsappConnectionScreenState extends State<WhatsappConnectionScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('فشل الحصول على رمز الربط: $e'),
-            backgroundColor: AppColors.error,
+            backgroundColor: AppColors.danger,
           ),
         );
       }
@@ -132,7 +132,7 @@ class _WhatsappConnectionScreenState extends State<WhatsappConnectionScreen> {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text('انتهت مهلة الانتظار. حاول مرة أخرى.'),
-              backgroundColor: AppColors.error,
+              backgroundColor: AppColors.danger,
             ),
           );
         }
@@ -187,7 +187,7 @@ class _WhatsappConnectionScreenState extends State<WhatsappConnectionScreen> {
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(ctx, true),
-            style: ElevatedButton.styleFrom(backgroundColor: AppColors.error),
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.danger),
             child: const Text('قطع الاتصال', style: TextStyle(color: Colors.white)),
           ),
         ],
@@ -239,7 +239,7 @@ class _WhatsappConnectionScreenState extends State<WhatsappConnectionScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(ok ? 'تم إرسال الرسالة! ✅' : 'فشل الإرسال'),
-            backgroundColor: ok ? AppColors.success : AppColors.error,
+            backgroundColor: ok ? AppColors.success : AppColors.danger,
           ),
         );
       }
@@ -248,7 +248,7 @@ class _WhatsappConnectionScreenState extends State<WhatsappConnectionScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('فشل الإرسال: $e'),
-            backgroundColor: AppColors.error,
+            backgroundColor: AppColors.danger,
           ),
         );
       }
@@ -309,7 +309,7 @@ class _WhatsappConnectionScreenState extends State<WhatsappConnectionScreen> {
       child: Row(
         children: [
           Icon(
-            isConnected ? LucideIcons.messageCircle : LucideIcons.messageCircleOff,
+            isConnected ? LucideIcons.messageCircle : LucideIcons.messageSquare,
             color: isConnected ? Colors.white : AppColors.textMutedLight,
             size: 32,
           ),
